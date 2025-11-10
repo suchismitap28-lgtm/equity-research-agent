@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h2>Create a Report</h2>
+  {% if not has_key %}
+  <div class="warning">
+    <strong>Note:</strong> No API key detected. Set <code>OPENAI_API_KEY</code> in a <code>.env</code> file before generating.
+  </div>
+  {% else %}
+  <div class="ok">
+    OpenAI key loaded: <code>{{ key_hint }}</code>
+  </div>
+  {% endif %}
+  <form method="post" action="/generate">
+    <div class="grid">
+      <div>
+        <label for="ticker">Ticker (recommended)</label>
+        <input id="ticker" name="ticker" placeholder="AAPL, MSFT, TSLA" />
+      </div>
+      <div>
+        <label for="company">Company (optional)</label>
+        <input id="company" name="company" placeholder="Apple Inc." />
+      </div>
+    </div>
+    <label for="prompt">Your Prompt</label>
+    <textarea id="prompt" name="prompt" rows="7" placeholder="e.g., Write a comprehensive equity research report emphasizing margin trajectory, product roadmap, key risks, and a DCF-based valuation range."></textarea>
+    <button type="submit">Generate Report</button>
+  </form>
+</section>
+{% endblock %}
