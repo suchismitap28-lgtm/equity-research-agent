@@ -1,0 +1,23 @@
+*{box-sizing:border-box} body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#0b0f17;color:#e6edf3}
+header{padding:32px 20px;text-align:center;background:linear-gradient(180deg,#121826,#0b0f17)}
+h1{margin:0;font-size:28px}
+.tagline{color:#9fb0c3;margin-top:8px}
+main{max-width:980px;margin:24px auto;padding:0 16px}
+.card{background:#0f1522;border:1px solid #1f2937;border-radius:14px;padding:18px 16px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+h2{margin-top:0}
+label{display:block;font-size:14px;margin:10px 0 6px;color:#bcd0e0}
+input,textarea{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#e6edf3}
+button{background:#2563eb;border:none;color:white;padding:10px 14px;border-radius:10px;cursor:pointer}
+button:hover{filter:brightness(1.1)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.warning{background:#33211a;color:#f9caa7;border:1px solid #472b23;border-radius:10px;padding:10px;margin-bottom:12px}
+.ok{background:#182a1e;color:#bce5c6;border:1px solid #1f3a29;border-radius:10px;padding:10px;margin-bottom:12px}
+.report-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.actions button, .actions form button{margin-left:8px}
+.markdown{line-height:1.6}
+.markdown h1,.markdown h2,.markdown h3{margin-top:18px}
+.markdown table{width:100%;border-collapse:collapse;margin:12px 0;background:#0b1220}
+.markdown table th,.markdown table td{border:1px solid #233044;padding:8px;text-align:left}
+.payload{margin-top:18px}
+.disclaimer{color:#9fb0c3;font-size:12px;margin-top:12px}
+@media (max-width:640px){.grid{grid-template-columns:1fr}}
