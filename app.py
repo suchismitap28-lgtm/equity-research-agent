@@ -1,82 +1,58 @@
-from flask import Flask, render_template, request, send_file, jsonify
-import io, os, json, datetime as dt
+import streamlit as st
 from agents.report_agent import generate_report
 from services.finance import fetch_quote, fetch_financials, quick_ratios_from_income_balance, dcf_quick
 from services.search import news_headlines
-from services.utils import OPENAI_API_KEY, mask
+from services.utils import OPENAI_API_KEY
+import pandas as pd
+import json
 
-app = Flask(__name__)
+st.set_page_config(page_title="Equity Research AI", layout="wide")
 
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html", has_key=bool(OPENAI_API_KEY), key_hint=mask(OPENAI_API_KEY))
+st.title("💼 AI-Powered Equity Research Report Generator")
+st.caption("Generate detailed equity research reports using OpenAI + live financial data.")
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    company = request.form.get("company","").strip()
-    ticker = request.form.get("ticker","").strip().upper()
-    user_prompt = request.form.get("prompt","").strip()
-    try:
-        quote = fetch_quote(ticker) if ticker else {}
-    except Exception:
-        quote = {}
-    try:
-        financials = fetch_financials(ticker) if ticker else {}
-    except Exception:
-        financials = {}
-    ratios = quick_ratios_from_income_balance(financials)
-    # Attempt quick DCF from last known cash flow if available
-    last_fcf = None
-    try:
-        import pandas as pd
-        cf = financials.get("cashflow", [])
-        if cf:
-            df = pd.DataFrame(cf).set_index("item")
-            # Try 'Free Cash Flow' row
-            if "Free Cash Flow" in df.index:
-                row = df.loc["Free Cash Flow"]
-                for c in row.index:
-                    val = row[c]
-                    if pd.notnull(val):
-                        last_fcf = float(val)
-                        break
-    except Exception:
-        pass
-    dcf = dcf_quick(last_fcf) if last_fcf else {"fair_value": None, "series": []}
-    try:
-        news = news_headlines(company or ticker, max_results=5, days=90) if (company or ticker) else []
-    except Exception:
-        news = []
+# --- Sidebar ---
+st.sidebar.header("Configuration")
+ticker = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL, TSLA, MSFT)", "")
+company = st.sidebar.text_input("Company Name (optional)", "")
+prompt = st.sidebar.text_area("Enter your custom prompt",
+    "Write a detailed equity research report focusing on valuation, profitability, and future outlook."
+)
 
-    try:
-        report_md = generate_report(company, ticker, user_prompt, quote, financials, ratios, news)
-    except Exception as e:
-        report_md = f"""## Error
-There was a problem generating the report. Please check your API key and model.
-**Details:** {e}
-"""
+generate = st.sidebar.button("Generate Report")
 
-    # Persist a simple JSON payload (for debugging / download)
-    payload = {
-        "company": company,
-        "ticker": ticker,
-        "prompt": user_prompt,
-        "quote": quote,
-        "ratios": ratios,
-        "dcf": dcf,
-        "news": news,
-        "generated_at": dt.datetime.utcnow().isoformat() + "Z",
-        "report_md": report_md,
-    }
+if not OPENAI_API_KEY:
+    st.warning("⚠️ No OpenAI API key found. Please set it in your environment or secrets.")
+else:
+    st.sidebar.success("✅ API Key Loaded")
 
-    return render_template("report.html", payload=json.dumps(payload, indent=2), md=report_md, company=company or ticker or "Equity Research Report")
+# --- Main Output ---
+if generate:
+    if not ticker:
+        st.error("Please enter at least a stock ticker.")
+    else:
+        with st.spinner("Fetching data and generating report... ⏳"):
+            try:
+                quote = fetch_quote(ticker)
+                financials = fetch_financials(ticker)
+                ratios = quick_ratios_from_income_balance(financials)
+                dcf = dcf_quick(1_000_000)  # example input
+                news = news_headlines(company or ticker, max_results=5)
 
-@app.route("/download/html", methods=["POST"])
-def download_html():
-    html = request.form.get("html","")
-    name = request.form.get("name","Equity_Research_Report").replace(" ","_")
-    buf = io.BytesIO(html.encode("utf-8"))
-    return send_file(buf, mimetype="text/html", as_attachment=True, download_name=f"{name}.html")
+                report_md = generate_report(company, ticker, prompt, quote, financials, ratios, news)
 
-if __name__ == "__main__":
-    app.run(debug=True)
+                st.subheader(f"📊 Equity Research Report for {company or ticker}")
+                st.markdown(report_md)
+                
+                st.download_button("📥 Download Report", report_md, file_name=f"{ticker}_report.md")
+                
+                with st.expander("View Debug Info"):
+                    st.json({
+                        "ticker": ticker,
+                        "quote": quote,
+                        "ratios": ratios,
+                        "dcf": dcf,
+                        "news": news,
+                    })
+            except Exception as e:
+                st.error(f"❌ Error while generating report: {e}")
