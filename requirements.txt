@@ -1,10 +1,11 @@
 streamlit
-openai
+openai>=1.30.0
 yfinance
 duckduckgo-search
 pandas
 numpy
 python-dotenv
 requests
-pip install fpdf2
+fpdf2
+
 
