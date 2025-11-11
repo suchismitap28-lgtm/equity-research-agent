@@ -6,4 +6,5 @@ pandas
 numpy
 python-dotenv
 requests
+pip install fpdf2
 
