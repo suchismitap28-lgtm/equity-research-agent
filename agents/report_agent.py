@@ -1,120 +1,111 @@
-from typing import List, Dict, Any
 import json
-import datetime
-from openai import OpenAI
+import openai
+import os
 from services.utils import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
 
+# Configure client
+client = openai.OpenAI(
+    api_key=OPENAI_API_KEY,
+    base_url=OPENAI_BASE_URL
+)
 
-# -------------------- Helper: create OpenAI client --------------------
-def _client():
-    if not OPENAI_API_KEY:
-        raise RuntimeError("Missing OPENAI_API_KEY")
-    if OPENAI_BASE_URL:
-        return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-    return OpenAI(api_key=OPENAI_API_KEY)
+# ----------------------------------------------------------------------
+# 🧠 Helper: Truncate Large Inputs to Avoid Context Errors
+# ----------------------------------------------------------------------
+def truncate_text(text, max_chars=800):
+    if not text:
+        return ""
+    return text[:max_chars] + "..." if len(text) > max_chars else text
 
 
-# -------------------- Helper: safe JSON serialization --------------------
-def safe_json(data):
+def summarize_large_data(data_dict, max_items=10):
     """
-    Converts any non-serializable object (like Timestamp, datetime, numpy, etc.)
-    into a JSON-safe string.
+    Converts large dictionaries or lists into shorter summaries
+    to fit context length safely.
     """
-    def default(o):
-        if isinstance(o, (datetime.datetime, datetime.date)):
-            return o.isoformat()
-        try:
-            # Handle pandas/numpy Timestamp or similar
-            if hasattr(o, "isoformat"):
-                return o.isoformat()
-            return str(o)
-        except Exception:
-            return str(o)
-    return json.dumps(data, indent=2, default=default)
+    if isinstance(data_dict, dict):
+        short_data = {}
+        for i, (k, v) in enumerate(data_dict.items()):
+            if i >= max_items:
+                break
+            short_data[k] = truncate_text(str(v))
+        return short_data
+
+    elif isinstance(data_dict, list):
+        return [truncate_text(str(item)) for item in data_dict[:max_items]]
+
+    return truncate_text(str(data_dict))
 
 
-# -------------------- Build prompt for the AI --------------------
-def make_prompt(
-    company: str,
-    ticker: str,
-    user_prompt: str,
-    quote: dict,
-    financials: dict,
-    ratios: dict,
-    news: List[dict],
-) -> List[Dict[str, Any]]:
+# ----------------------------------------------------------------------
+# 🧾 Main Report Generation Function
+# ----------------------------------------------------------------------
+def generate_report(company, ticker, user_prompt, quote, financials, ratios, news):
     """
-    Builds the AI prompt with all context: company info, financial data, ratios, and recent news.
+    Generates a summarized equity research report using AI.
+    Handles large input data safely by truncating and summarizing.
     """
 
-    content = {
-        "company": company,
-        "ticker": ticker,
-        "user_prompt": user_prompt,
-        "quote": quote,
-        "ratios": ratios,
-        "financials_keys": [k for k in financials.keys()],
-        "news": news,
-    }
+    # ✅ Step 1: Summarize or trim all inputs
+    company = truncate_text(company or ticker, 100)
+    user_prompt = truncate_text(user_prompt, 600)
 
-    system = (
-        "You are a senior sell-side equity research analyst. "
-        "Write in clear, structured sections with numbered or titled headings. "
-        "Be analytical, evidence-based, and avoid exaggeration."
+    quote_summary = summarize_large_data(quote, max_items=10)
+    ratios_summary = summarize_large_data(ratios, max_items=10)
+    financials_summary = summarize_large_data(financials, max_items=5)
+    news_summary = summarize_large_data(news, max_items=5)
+
+    # ✅ Step 2: Build a compact, structured prompt
+    system_prompt = (
+        "You are a professional equity research analyst. "
+        "Your goal is to write a concise yet insightful equity research report "
+        "based on the provided company data, financial summary, and recent news. "
+        "Focus on key metrics, valuation insights, competitive position, and investment outlook. "
+        "Avoid unnecessary repetition. Use bullet points or short paragraphs."
     )
 
-    user = f"""Create a full equity research report with the following sections:
-1) Investment Summary (key insights and drivers)
-2) Company Overview (business model, segments, and strategy)
-3) Industry & Competitive Landscape (Porter’s 5 forces or similar)
-4) Recent Developments & News (summarize key headlines)
-5) Financial Analysis (growth, profitability, efficiency ratios)
-6) Valuation (DCF or relative multiples explanation)
-7) Risks & Mitigants
-8) Catalysts & Outlook
-9) Final Recommendation (Buy/Hold/Sell with reasoning)
+    user_message = f"""
+    Company: {company}
+    Ticker: {ticker}
 
-Guidelines:
-- Use the provided data JSON faithfully.
-- If data is missing, state assumptions clearly.
-- Maintain a professional, concise tone.
-- Include 1–2 tables or bullet lists where relevant.
-- Provide a short disclaimer at the end.
+    --- Key Financial Highlights ---
+    {json.dumps(financials_summary, indent=2)}
 
-JSON Context:
-{safe_json(content)}
-"""
+    --- Valuation Ratios ---
+    {json.dumps(ratios_summary, indent=2)}
 
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user},
-    ]
+    --- Market Summary ---
+    {json.dumps(quote_summary, indent=2)}
 
+    --- Recent News Headlines ---
+    {json.dumps(news_summary, indent=2)}
 
-# -------------------- Generate report using OpenAI --------------------
-def generate_report(
-    company: str,
-    ticker: str,
-    user_prompt: str,
-    quote: dict,
-    financials: dict,
-    ratios: dict,
-    news: List[dict],
-) -> str:
+    --- Custom Analyst Instructions ---
+    {user_prompt}
+
+    Generate a well-structured equity research report including:
+    1. Executive Summary
+    2. Business Overview
+    3. Financial Analysis
+    4. Valuation & Outlook
+    5. Key Risks & Opportunities
+    6. Investment Recommendation
     """
-    Calls the OpenAI model to generate a structured equity research report.
-    """
-    messages = make_prompt(company, ticker, user_prompt, quote, financials, ratios, news)
-    client = _client()
 
+    # ✅ Step 3: Make API call safely
     try:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
-            messages=messages,
-            temperature=0.4,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=1500,  # limits the output size
+            temperature=0.7
         )
-        report = response.choices[0].message.content
+
+        report = response.choices[0].message.content.strip()
         return report
 
     except Exception as e:
-        return f"⚠️ Error generating report: {str(e)}"
+        return f"⚠️ Error generating report: {e}"
