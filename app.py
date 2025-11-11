@@ -1,3 +1,5 @@
+import sys, os
+sys.path.append(os.path.dirname(__file__))
 import streamlit as st
 from agents.report_agent import generate_report
 from services.finance import fetch_quote, fetch_financials, quick_ratios_from_income_balance, dcf_quick
